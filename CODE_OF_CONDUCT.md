@@ -1,11 +1,22 @@
-# Кодекс поведения
+# Code of conduct
 
-Мы хотим, чтобы участвовать было спокойно и по делу.
+## The short version
 
-- Критикуйте код и решения, а не людей.
-- Не публикуйте чужие персональные данные, ключи, пароли и закрытый код.
-- Не используйте issues для рекламы и накрутки счётчиков каталога.
-- Спорные темы (политика, религии) — не здесь.
+Be decent. Discuss the code, not the person. Assume the other side wants the same thing: software
+that works.
 
-Нарушения: модерация может скрыть запись, ограничить аккаунт или заблокировать его.
-Оспорить — ответом на письмо модерации.
+## Unacceptable behaviour
+
+- insults, personal attacks, harassment, discrimination of any kind
+- publishing somebody's private data without permission
+- spam, advertising unrelated products, political campaigning
+- deliberately wasting maintainers' time with duplicate or bad-faith reports
+
+## Consequences
+
+A maintainer may edit or delete comments, close issues and pull requests, or block an account.
+Serious cases are reported to GitHub.
+
+## Scope
+
+Issues, pull requests, discussions, commit messages and any other project space.

@@ -1,32 +1,49 @@
-name: Баг
-description: Что-то не работает как ожидалось
+name: Bug report
+description: Something does not work as expected
 labels: [bug]
 body:
-  - type: dropdown
-    id: os
+  - type: markdown
     attributes:
-      label: ОС
-      options: [Windows 10, Windows 11, macOS Intel, macOS Apple Silicon, Linux x86_64, Linux ARM64]
-    validations: { required: true }
+      value: Thanks for the report. Please fill in the fields below — without them it is hard to reproduce the problem.
   - type: input
     id: version
     attributes:
-      label: Версия лаунчера
-      placeholder: "2.3.0 (видно в левом нижнем углу)"
-    validations: { required: true }
+      label: ArteCraft version
+      description: Shown at the bottom of the window, e.g. 2.5.0
+      placeholder: 2.5.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+        - macOS
+    validations:
+      required: true
   - type: textarea
     id: steps
     attributes:
-      label: Шаги
-      placeholder: "1. Открыл Marketplace\n2. Нажал «Установить» у OBS\n3. …"
-    validations: { required: true }
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the Marketplace tab
+        2. Press Install on an entry
+        3. …
+    validations:
+      required: true
   - type: textarea
     id: expected
     attributes:
-      label: Что ожидали и что получили
-    validations: { required: true }
+      label: Expected result
+    validations:
+      required: true
   - type: textarea
-    id: logs
+    id: actual
     attributes:
-      label: Скриншот или лог
-      description: Перетащите картинку сюда. Логи — только без токенов и e-mail.
+      label: Actual result
+      description: Include the error text you see, and a screenshot if possible
+    validations:
+      required: true

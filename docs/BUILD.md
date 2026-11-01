@@ -1,39 +1,61 @@
-# Сборка
+# Building ArteCraft from source
 
-## Что нужно
-- Go 1.22+ (проверено на 1.23.6)
-- Windows: ничего дополнительно (WebView2 входит в Windows 10/11)
-- macOS: `xcode-select --install` (окно — WKWebView через cgo)
-- Linux: `sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev` для окна; без cgo собирается режим локального сервера
+## Requirements
 
-## Команды
+- Go 1.22 or newer (`go version`)
+- Optional: a platform toolchain for the native window
+  - Windows: MinGW-w64 when cross-compiling from Linux (`x86_64-w64-mingw32-gcc`)
+  - Linux: `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`
+  - macOS: Xcode Command Line Tools
+- Optional: `zip`, for packaging release archives
+
+## Build
+
 ```bash
 cd src
-go vet ./... && go test ./...
-
-# без системных библиотек (сервер + браузер)
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ArteCraft .
-
-# с окном на Linux
-CGO_ENABLED=1 go build -trimpath -o ArteCraft .
-
-# Windows
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ArteCraft.exe .
+CGO_ENABLED=0 go build -trimpath -o ArteCraft .          # any platform, local server mode
+CGO_ENABLED=1 go build -trimpath -o ArteCraft .          # Linux, GTK + WebKitGTK window
 ```
 
-## Версия
-`src/main.go` → `const LauncherVersion = "2.3.0"`.
-UI версию не дублирует — берёт из `/api/status`.
+Windows, from Windows or cross-compiling:
 
-## Иконки
-- `icon/artecraft.svg` — вектор, `icon/artecraft-1024.png`, `icon/artecraft.ico`
-- macOS: `mkdir ArteCraft.iconset` (16…1024 px) → `iconutil -c icns ArteCraft.iconset`
-
-## Подпись
-Пока не делается. Windows: Authenticode EV + `signtool sign /fd sha256 /tr http://timestamp.digicert.com ...`.
-macOS: Developer ID + `codesign --deep --options runtime` + `xcrun notarytool submit`.
-
-## Локальная отладка против своего сервера
 ```bash
-ARTECRAFT_ORIGIN=http://127.0.0.1:3000 ./ArteCraft
+CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc \
+  go build -trimpath -ldflags "-s -w -H windowsgui" -o ArteCraft.exe .
 ```
+
+macOS:
+
+```bash
+CGO_ENABLED=1 GOOS=darwin go build -trimpath -o ArteCraft .
+```
+
+Without CGO the binary still works: it serves the UI on `127.0.0.1` and opens the default
+Chromium-based browser in app mode. With CGO you get the native window (WebView2 / WebKitGTK /
+WKWebView).
+
+## Checks before shipping
+
+```bash
+go vet ./...
+go test ./...                # guards: allowed download hosts, i18n keys, no Cyrillic in Go strings and HTML
+./ArteCraft --self-test      # starts the server, checks UI and assets, prints version and self SHA-256
+```
+
+## Versioning
+
+The version lives in one place: `src/main.go`, `const LauncherVersion`. Change it there, update
+the badge in `README.md`, add a `CHANGELOG.md` entry and build the release archives.
+
+## Release archives
+
+Suggested file names and contents:
+
+| File | Contents |
+|---|---|
+| `ArteCraft-<ver>-Windows-Portable.zip` | `ArteCraft.exe`, icon, readme |
+| `ArteCraft-Linux-x86_64.tar.gz` | `ArteCraft`, icon, `install-desktop-shortcut.sh`, readme |
+| `ArteCraft-Linux-x86_64.AppImage` | AppDir with `usr/bin/ArteCraft`, desktop entry, icon |
+| `ArteCraft-<ver>-ALL-IN-ONE.zip` | launchers, sources, screenshots, build guide, `CHECKSUMS.txt` |
+
+Always publish a `SHA256SUMS.txt` next to the archives; the launcher and the website both show it.
