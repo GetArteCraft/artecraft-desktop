@@ -1,0 +1,25 @@
+name: Добавить приложение в каталог
+description: Предложить открытый проект для маркетплейса
+labels: [catalog]
+body:
+  - type: input
+    id: repo
+    attributes:
+      label: Ссылка на GitHub
+      placeholder: https://github.com/owner/repo
+    validations: { required: true }
+  - type: dropdown
+    id: platforms
+    attributes:
+      label: Какие ОС есть в релизах
+      multiple: true
+      options: [Windows, macOS, Linux]
+  - type: input
+    id: license
+    attributes:
+      label: Лицензия
+      placeholder: MIT / GPL-3.0 / Apache-2.0
+  - type: textarea
+    id: why
+    attributes:
+      label: Чем полезно (1–2 предложения)

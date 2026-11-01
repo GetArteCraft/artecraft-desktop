@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2a63"/>
+      <stop offset="0.55" stop-color="#101a3a"/>
+      <stop offset="1" stop-color="#0a0f22"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#a9c6ff"/>
+      <stop offset="0.45" stop-color="#5b7bff"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="spec" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.28" cy="0.18" r="0.85">
+      <stop offset="0" stop-color="#6f8dff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#6f8dff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#glow)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="3"/>
+  <path d="M400 388 L292 124 H220 L112 388 h84 L244 232 316 388z" fill="url(#mark)"/>
+  <path d="M400 388 L292 124 H220 L112 388 h84 L244 232 316 388z" fill="url(#spec)"/>
+  <path d="M292 124 H220 L236 168 H276z" fill="#ffffff" fill-opacity="0.30"/>
+</svg>

@@ -1,0 +1,32 @@
+name: Баг
+description: Что-то не работает как ожидалось
+labels: [bug]
+body:
+  - type: dropdown
+    id: os
+    attributes:
+      label: ОС
+      options: [Windows 10, Windows 11, macOS Intel, macOS Apple Silicon, Linux x86_64, Linux ARM64]
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Версия лаунчера
+      placeholder: "2.3.0 (видно в левом нижнем углу)"
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги
+      placeholder: "1. Открыл Marketplace\n2. Нажал «Установить» у OBS\n3. …"
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидали и что получили
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Скриншот или лог
+      description: Перетащите картинку сюда. Логи — только без токенов и e-mail.

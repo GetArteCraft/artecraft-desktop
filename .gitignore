@@ -1,0 +1,21 @@
+# бинарники
+ArteCraft
+ArteCraft.exe
+*.app
+*.dmg
+*.AppImage
+dist/
+build/
+release/
+
+# состояние и локальные данные
+launcher-state*.json
+device-id
+*.log
+
+# редакторы/ОС
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
