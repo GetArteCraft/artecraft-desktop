@@ -30,6 +30,9 @@ void   artecraft_post_quit(HWND hwnd);
 void   artecraft_subclass(HWND hwnd);
 void   artecraft_unsubclass(HWND hwnd);
 LRESULT artecraft_call_prev(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+LRESULT artecraft_default_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+UINT    artecraft_taskbar_created(void);
+void    artecraft_message_box(const wchar_t *title, const wchar_t *text);
 void   artecraft_destroy_window(HWND hwnd);
 
 #endif

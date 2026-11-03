@@ -2,44 +2,142 @@
 
 package main
 
+// platform_windows.go — как лаунчер показывает интерфейс на Windows.
+//
+// Порядок (2.5.4):
+//   1) если установлен Microsoft Edge WebView2 Runtime — нативное окно WebView2;
+//   2) иначе (или если окно не поднялось) — Edge/Chrome/любой Chromium в режиме
+//      приложения (--app): отдельное окно без адресной строки и вкладок;
+//   3) браузера «вообще» и второго окна больше не бывает: перед стартом окна
+//      рантайм проверяется, а неудачная попытка WebView2 окно за собой не оставляет.
+//
+// Иконка трея создаётся в нашем процессе в любом режиме, поэтому «свернуть в трей»
+// работает и с окном Chromium: по трею окно показывается/прячется по заголовку,
+// а если пользователь закрыл окно при включённом «сворачивать в трей» — лаунчер
+// остаётся жить в трее и по «Открыть» поднимает окно заново.
+
 import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
+	"unsafe"
 )
 
 func runPlatformDesktopUI(localURL string) {
-	// 1) Настоящее окно Windows с WebView2 — если рантайм установлен.
-	if runNativeWebViewWindow(localURL) {
-		return
+	if webView2Available() {
+		if runNativeWebViewWindow(localURL) {
+			return
+		}
+		logLine("native WebView2 window failed, switching to app window")
+	} else {
+		logLine("WebView2 runtime not installed, using app window")
 	}
-	// 2) Запасной путь: Edge/Chrome в режиме приложения (без адресной строки и вкладок).
-	edgePaths := []string{
-		filepath.Join(os.Getenv("ProgramFiles(x86)"), "Microsoft", "Edge", "Application", "msedge.exe"),
-		filepath.Join(os.Getenv("ProgramFiles"), "Microsoft", "Edge", "Application", "msedge.exe"),
-		filepath.Join(os.Getenv("ProgramFiles"), "Google", "Chrome", "Application", "chrome.exe"),
-	}
-	for _, bin := range edgePaths {
-		if _, err := os.Stat(bin); err == nil {
-			profileDir := filepath.Join(getAppDataDir(), "AppWindowProfile")
-			_ = os.MkdirAll(profileDir, 0755)
-			cmd := exec.Command(bin, "--app="+localURL, "--window-size=1280,820", "--user-data-dir="+profileDir,
-				"--no-first-run", "--no-default-browser-check", "--disable-features=msEdgeFirstRunExperience,Translate",
-				"--disable-sync", "--no-service-autorun", "--app-auto-launched")
-			if cmd.Start() == nil {
-				_ = cmd.Wait()
-				return
-			}
+	runAppWindowLoop(localURL)
+}
+
+// chromiumCandidates — установленные Chromium-браузеры, в порядке предпочтения.
+func chromiumCandidates() []string {
+	env := func(k string) string { return os.Getenv(k) }
+	var out []string
+	add := func(parts ...string) {
+		p := filepath.Join(parts...)
+		if _, err := os.Stat(p); err == nil {
+			out = append(out, p)
 		}
 	}
-	_ = openExternalURL(localURL)
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	add(env("ProgramFiles(x86)"), "Microsoft", "Edge", "Application", "msedge.exe")
+	add(env("ProgramFiles"), "Microsoft", "Edge", "Application", "msedge.exe")
+	add(env("ProgramFiles"), "Google", "Chrome", "Application", "chrome.exe")
+	add(env("ProgramFiles(x86)"), "Google", "Chrome", "Application", "chrome.exe")
+	add(env("LOCALAPPDATA"), "Google", "Chrome", "Application", "chrome.exe")
+	add(env("ProgramFiles"), "BraveSoftware", "Brave-Browser", "Application", "brave.exe")
+	add(env("ProgramFiles"), "Vivaldi", "Application", "vivaldi.exe")
+	add(env("LOCALAPPDATA"), "Programs", "Opera", "opera.exe")
+	return out
+}
+
+func startAppWindow(localURL string) *exec.Cmd {
+	profileDir := filepath.Join(getAppDataDir(), "AppWindowProfile")
+	_ = os.MkdirAll(profileDir, 0755)
+	for _, bin := range chromiumCandidates() {
+		cmd := exec.Command(bin,
+			"--app="+localURL,
+			"--window-size=1280,880",
+			"--user-data-dir="+profileDir,
+			"--no-first-run",
+			"--no-default-browser-check",
+			"--disable-features=msEdgeFirstRunExperience,Translate,dialMediaRouteProvider",
+			"--disable-sync",
+			"--no-service-autorun",
+		)
+		if err := cmd.Start(); err == nil {
+			logLine("app window started: %s", bin)
+			return cmd
+		}
+		logLine("cannot start %s", bin)
+	}
+	return nil
+}
+
+func runAppWindowLoop(localURL string) {
+	// Трей живёт, пока жив лаунчер — независимо от того, чьё окно показывает UI.
+	if !installTray(nil, true, func() {
+		logLine("quit from tray menu")
+		mu.Lock()
+		saveStateLocked()
+		mu.Unlock()
+		_ = os.Remove(activeInstanceFilePath())
+		releaseOSInstanceLock()
+		os.Exit(0)
+	}) {
+		logLine("tray not available in app-window mode")
+	}
+	defer removeTray()
+
+	for {
+		cmd := startAppWindow(localURL)
+		if cmd == nil {
+			showNativeMessage("ArteCraft",
+				"ArteCraft needs Microsoft Edge WebView2 Runtime or any Chromium browser "+
+					"(Edge, Chrome, Brave) to show its window.\n\n"+
+					"Install WebView2 once from microsoft.com/edge/webview2 and start ArteCraft again.")
+			return
+		}
+		_ = cmd.Wait()
+
+		mu.Lock()
+		closeToTray := appState.CloseToTray
+		mu.Unlock()
+		if !closeToTray {
+			logLine("app window closed, closeToTray is off — exiting")
+			return
+		}
+		logLine("app window closed, staying in tray (closeToTray on)")
+		// Ждём «Открыть» из трея. Таймаут — страховка от вечного висяка.
+		select {
+		case <-trayOpenCh:
+			logLine("reopening window from tray")
+			continue
+		case <-time.After(12 * time.Hour):
+			return
+		}
+	}
+}
+
+// showNativeMessage — одно окно-сообщение Windows (MessageBoxW), без консоли
+// и без пустого окна WebView2. Используется только когда UI показать нечем.
+func showNativeMessage(title, text string) {
+	user32 := syscall.NewLazyDLL("user32.dll")
+	proc := user32.NewProc("MessageBoxW")
+	t, _ := syscall.UTF16PtrFromString(text)
+	c, _ := syscall.UTF16PtrFromString(title)
+	const mbIconWarning, mbSetForeground = 0x00000030, 0x00010000
+	_, _, _ = proc.Call(0, uintptr(unsafe.Pointer(t)), uintptr(unsafe.Pointer(c)),
+		uintptr(mbIconWarning|mbSetForeground|0x00000000))
 }
 
 func launchInstalledBinary(inst InstalledApp) error {
@@ -57,8 +155,35 @@ func openFolderNative(dir string) error {
 	return exec.Command("explorer.exe", dir).Start()
 }
 
+// pickFolderNative — системный диалог выбора папки. До 2.5.4 здесь стояла
+// заглушка, возвращавшая "" — кнопка «Выбрать папку» в настройках молча ничего не
+// делала. Диалог показываем через .NET FolderBrowserDialog в отдельном процессе
+// PowerShell (окно консоли скрыто), поэтому cgo и COM в лаунчере не нужны.
 func pickFolderNative(current string) string {
-	return ""
+	if current == "" {
+		current, _ = os.UserHomeDir()
+	}
+	_ = os.MkdirAll(current, 0755)
+	script := "Add-Type -AssemblyName System.Windows.Forms | Out-Null; " +
+		"$d = New-Object System.Windows.Forms.FolderBrowserDialog; " +
+		"$d.Description = 'Select ArteCraft apps folder'; " +
+		"$d.ShowNewFolderButton = $true; " +
+		"$d.SelectedPath = '" + escapePS(current) + "'; " +
+		"if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { " +
+		"[Console]::Out.Write($d.SelectedPath) }"
+	cmd := hiddenCmd("powershell", "-NoProfile", "-NonInteractive", "-STA",
+		"-WindowStyle", "Hidden", "-Command", script)
+	out, err := cmd.Output()
+	if err != nil {
+		logLine("pick folder failed: %v", err)
+		return ""
+	}
+	picked := strings.TrimSpace(string(out))
+	if picked == "" {
+		logLine("pick folder cancelled")
+		return ""
+	}
+	return picked
 }
 
 // hiddenCmd запускает процесс без окна консоли. Без HideWindow + CREATE_NO_WINDOW

@@ -1331,9 +1331,6 @@ func RunCLI(args []string) bool {
 		// каталожное приложение
 		for _, app := range Catalog {
 			if app.Slug == target {
-				mu.Lock()
-				appState.Installed[app.Slug] = appState.Installed[app.Slug]
-				mu.Unlock()
 				fmt.Println("catalog installs use the UI/worker queue; run: artecraft --launch", app.Slug)
 				return true
 			}

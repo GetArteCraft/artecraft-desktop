@@ -1,0 +1,23 @@
+{
+  "FixedFileInfo": {
+    "FileVersion": {"Major": 2, "Minor": 5, "Patch": 4, "Build": 0},
+    "ProductVersion": {"Major": 2, "Minor": 5, "Patch": 4, "Build": 0},
+    "FileFlagsMask": "3f",
+    "FileFlags": "00",
+    "FileOS": "040004",
+    "FileType": "01",
+    "FileSubType": "00"
+  },
+  "StringFileInfo": {
+    "Comments": "ArteCraft launcher - installs open-source desktop apps from GitHub releases",
+    "CompanyName": "ArteCraft",
+    "FileDescription": "ArteCraft Desktop Hub",
+    "FileVersion": "2.5.4.0",
+    "InternalName": "ArteCraft",
+    "LegalCopyright": "MIT License, 2026 ArteCraft",
+    "OriginalFilename": "ArteCraft.exe",
+    "ProductName": "ArteCraft",
+    "ProductVersion": "2.5.4"
+  },
+  "VarFileInfo": {"Translation": {"LangID": "0409", "CharsetID": "04B0"}}
+}

@@ -39,7 +39,7 @@ func init() {
 //go:embed ui/*
 var embeddedUI embed.FS
 
-const LauncherVersion = "2.5.0"
+const LauncherVersion = "2.5.4"
 
 type AppMeta struct {
 	Slug           string   `json:"slug"`
@@ -98,15 +98,19 @@ type SelfUpdateStatus struct {
 }
 
 type PersistedState struct {
-	ClientID        string                  `json:"clientId"`
-	Locale          string                  `json:"locale"`
-	InstallRoot     string                  `json:"installRoot"`
-	AutoStart       bool                    `json:"autoStart"`
-	CloseToTray     bool                    `json:"closeToTray"`
-	CreateShortcuts bool                    `json:"createShortcuts"`
-	CreateStartMenu bool                    `json:"createStartMenu"`
-	LowSpecMode     bool                    `json:"lowSpecMode"`
-	Installed       map[string]InstalledApp `json:"installed"`
+	ClientID        string `json:"clientId"`
+	Locale          string `json:"locale"`
+	InstallRoot     string `json:"installRoot"`
+	AutoStart       bool   `json:"autoStart"`
+	CloseToTray     bool   `json:"closeToTray"`
+	CreateShortcuts bool   `json:"createShortcuts"`
+	CreateStartMenu bool   `json:"createStartMenu"`
+	LowSpecMode     bool   `json:"lowSpecMode"`
+	// SettingsRev — версия схемы настроек. Нужна для одноразовой миграции:
+	// в сборках до 2.5.3 трей/автозапуск могли сохраниться как false из-за
+	// ошибки в записи состояния, хотя должны быть включены по умолчанию.
+	SettingsRev int                     `json:"settingsRev,omitempty"`
+	Installed   map[string]InstalledApp `json:"installed"`
 
 	// --- маркетплейс и импорт с GitHub (market.go) ---
 	Custom      map[string]CustomApp    `json:"custom,omitempty"`
@@ -230,8 +234,8 @@ func randomHex(n int) string {
 func loadState() {
 	_ = os.MkdirAll(getAppDataDir(), 0755)
 	appState = PersistedState{
-		ClientID:        randomHex(12),
-		Locale:          "",
+		ClientID:    randomHex(12),
+		Locale:      "",
 		InstallRoot: getDefaultInstallRoot(),
 		// Трей и автозапуск включены по умолчанию: так просил владелец — человек
 		// ставит лаунчер, закрывает крестиком и ожидает, что тот останется в трее,
@@ -245,9 +249,14 @@ func loadState() {
 		LowSpecMode:     false,
 		Installed:       map[string]InstalledApp{},
 	}
-	raw, err := os.ReadFile(stateFilePath())
-	if err == nil {
+	if raw, ok := readStateFile(); ok {
 		_ = json.Unmarshal(raw, &appState)
+	}
+	if appState.SettingsRev < 1 {
+		// одноразовая миграция: трей и автозапуск включены по умолчанию
+		appState.CloseToTray = true
+		appState.AutoStart = true
+		appState.SettingsRev = 1
 	}
 	if appState.ClientID == "" {
 		appState.ClientID = randomHex(12)
@@ -296,12 +305,58 @@ func loadState() {
 	saveStateLocked()
 }
 
+// saveStateLocked сохраняет состояние атомарно: пишем во временный файл,
+// сбрасываем на диск и подменяем им основной через rename. Раньше здесь был
+// прямой os.WriteFile — при двух запущенных копиях (или убийстве процесса
+// во время записи) файл обрезался, и настройки «не сохранялись».
+// Вызывать нужно, держа mu.
 func saveStateLocked() {
 	raw, err := json.MarshalIndent(appState, "", "  ")
-	if err == nil {
-		_ = os.MkdirAll(filepath.Dir(stateFilePath()), 0755)
-		_ = os.WriteFile(stateFilePath(), raw, 0644)
+	if err != nil {
+		return
 	}
+	dir := filepath.Dir(stateFilePath())
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
+	tmp := stateFilePath() + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return
+	}
+	if _, err = f.Write(raw); err == nil {
+		err = f.Sync()
+	}
+	cerr := f.Close()
+	if err != nil || cerr != nil {
+		_ = os.Remove(tmp)
+		return
+	}
+	// страховочная копия предыдущей версии — на случай битого JSON после сбоя
+	if prev, rerr := os.ReadFile(stateFilePath()); rerr == nil && len(prev) > 2 {
+		_ = os.WriteFile(stateFilePath()+".bak", prev, 0644)
+	}
+	if err := os.Rename(tmp, stateFilePath()); err != nil {
+		_ = os.Remove(tmp)
+	}
+}
+
+// readStateFile читает состояние, а если основной файл битый — пробует .bak.
+// Так пользователь не теряет настройки из-за одного неудачного запуска.
+func readStateFile() ([]byte, bool) {
+	if raw, err := os.ReadFile(stateFilePath()); err == nil && len(raw) > 2 {
+		var probe PersistedState
+		if json.Unmarshal(raw, &probe) == nil {
+			return raw, true
+		}
+	}
+	if raw, err := os.ReadFile(stateFilePath() + ".bak"); err == nil && len(raw) > 2 {
+		var probe PersistedState
+		if json.Unmarshal(raw, &probe) == nil {
+			return raw, true
+		}
+	}
+	return nil, false
 }
 
 func fallbackReleaseForOS(app AppMeta) RemoteReleaseInfo {
@@ -1456,8 +1511,21 @@ func buildHTTPMux() *http.ServeMux {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 
+	// /api/app/show — «покажи окно» для второго запуска и для ярлыка на рабочем столе.
+	// Отвечает быстро, чтобы повторный запуск не висел в ожидании.
+	mux.HandleFunc("/api/app/show", func(w http.ResponseWriter, r *http.Request) {
+		showMainWindow()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"visible":true}`))
+	})
+
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		saveStateLocked()
+		mu.Unlock()
 		_ = os.Remove(activeInstanceFilePath())
+		logLine("quit requested from UI")
+		releaseOSInstanceLock()
 		_, _ = w.Write([]byte(`{"ok":true}`))
 		go func() {
 			time.Sleep(120 * time.Millisecond)
@@ -1475,6 +1543,7 @@ func main() {
 	}
 	selfTest := flag.Bool("self-test", false, "Run automated headless health check and exit")
 	startInTray := flag.Bool("tray", false, "Start minimized to the system tray (used by autostart)")
+	diagnose := flag.Bool("diagnose", false, "Print environment, state paths and tray status, then exit")
 	flag.Parse()
 
 	// CLI-режим: artecraft list / install / launch / --help
@@ -1482,21 +1551,40 @@ func main() {
 
 	loadState()
 
-	// Single-instance check: if ArteCraft is already running locally, focus/open it instead of spawning a duplicate
+	// --diagnose: печатает окружение и путь к логу, ничего не запуская.
+	// В сборке с -H windowsgui окно консоли нет, поэтому пишем и в файл.
+	if *diagnose {
+		logf := func(format string, a ...any) { fmt.Printf(format+"\n", a...) }
+		logf("ArteCraft %s (%s/%s)", LauncherVersion, runtime.GOOS, runtime.GOARCH)
+		logf("app data dir : %s", getAppDataDir())
+		logf("state file   : %s", stateFilePath())
+		logf("log file     : %s", logPath())
+		logf("install root : %s", appState.InstallRoot)
+		logf("locale       : %s", appState.Locale)
+		logf("tray         : supported=%v closeToTray=%v autostart=%v", traySupported(), appState.CloseToTray, appState.AutoStart)
+		logLine("diagnose: %s/%s state=%s", LauncherVersion, runtime.GOOS, stateFilePath())
+		return
+	}
+
+	// Один экземпляр: если ArteCraft уже запущен — показываем его окно
+	// (в том числе из трея) и выходим. Никакого браузера: раньше здесь был
+	// openExternalURL, из-за чего второй запуск открывал вкладку в браузере,
+	// человек не понимал, что происходит, и запускал лаунчер ещё раз.
 	if !*selfTest {
-		if prevBytes, rerr := os.ReadFile(activeInstanceFilePath()); rerr == nil {
-			prevURL := strings.TrimSpace(string(prevBytes))
-			if strings.HasPrefix(prevURL, "http://127.0.0.1:") {
-				cl := &http.Client{Timeout: 350 * time.Millisecond}
-				if resp, gerr := cl.Get(prevURL + "/api/status"); gerr == nil {
-					_ = resp.Body.Close()
-					if resp.StatusCode == 200 {
-						_ = openExternalURL(prevURL)
-						os.Exit(0)
-					}
-				}
+		// Второй запуск никогда не создаёт второе окно: либо поднимаем окно
+		// уже работающего лаунчера, либо запускаемся сами. Блокировку держит
+		// ОС (мьютекс на Windows, flock на Unix), поэтому «отобрать» её у
+		// стартующего экземпляра невозможно.
+		if !acquireOSInstanceLock() {
+			if focusRunningInstance(6 * time.Second) {
+				logLine("second launch: focused the running instance")
+			} else {
+				logLine("second launch: running instance not reachable, exiting quietly")
 			}
+			return
 		}
+		defer releaseOSInstanceLock()
+		logLine("launcher %s starting (%s/%s)", LauncherVersion, runtime.GOOS, runtime.GOARCH)
 	}
 
 	for _, app := range Catalog {

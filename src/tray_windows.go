@@ -40,6 +40,19 @@ var (
 	hideOnClose int32 // читается из C-колбэка без блокировок
 )
 
+// trayOpenCh получает сигнал «показать окно» из меню трея. Нужен в режиме
+// Edge/Chrome --app: окно принадлежит другому процессу, и после его закрытия
+// лаунчер остаётся в трее, а по «Открыть» запускает окно снова.
+var trayOpenCh = make(chan struct{}, 4)
+
+func notifyTrayOpen() {
+	select {
+	case trayOpenCh <- struct{}{}:
+	default:
+	}
+	showMainWindow()
+}
+
 // trayLabels — подписи меню трея на языке интерфейса (15 языков, как в i18n.js).
 // i18n-ignore-start: строки трея живут в нативном меню Win32, до JS-словаря не
 // доходят, поэтому таблица продублирована здесь — по одному набору на язык.
@@ -92,9 +105,8 @@ func winWide(s string) *C.wchar_t {
 // installTray запускает иконку в трее и перехват закрытия окна.
 // onQuit вызывается при выборе «Выход» в меню.
 func installTray(window unsafe.Pointer, hideOnCloseEnabled bool, onQuit func()) bool {
-	if window == nil {
-		return false
-	}
+	// window == nil допустимо: в режиме Edge/Chrome --app собственного окна нет,
+	// трей всё равно нужен (показ/скрытие ищутся по заголовку).
 	trayMu.Lock()
 	if trayActive {
 		trayMu.Unlock()
@@ -107,10 +119,12 @@ func installTray(window unsafe.Pointer, hideOnCloseEnabled bool, onQuit func()) 
 	}
 	trayMu.Unlock()
 
-	hwndTarget := C.HWND(window)
-	C.artecraft_set_target(hwndTarget)
-	if hideOnCloseEnabled {
-		C.artecraft_subclass(hwndTarget)
+	if window != nil {
+		hwndTarget := C.HWND(window)
+		C.artecraft_set_target(hwndTarget)
+		if hideOnCloseEnabled {
+			C.artecraft_subclass(hwndTarget)
+		}
 	}
 
 	labels := trayLabels()
@@ -125,7 +139,11 @@ func installTray(window unsafe.Pointer, hideOnCloseEnabled bool, onQuit func()) 
 		trayMu.Lock()
 		trayHWND = hwnd
 		trayMu.Unlock()
-		C.artecraft_tray_add(hwnd, winWide(labels.tip))
+		if C.artecraft_tray_add(hwnd, winWide(labels.tip)) == 0 {
+			logLine("Shell_NotifyIcon(NIM_ADD) failed — tray icon not created")
+		} else {
+			logLine("tray icon added")
+		}
 		C.artecraft_message_loop()
 		C.artecraft_tray_remove(hwnd)
 		C.artecraft_destroy_window(hwnd)
@@ -153,7 +171,7 @@ func artecraftTrayProc(hwnd C.HWND, msg C.UINT, wparam C.WPARAM, lparam C.LPARAM
 	case uint32(C.ARTECRAFT_TRAY_MSG):
 		switch uint32(lparam) & 0xFFFF {
 		case C.WM_LBUTTONDBLCLK, C.WM_LBUTTONUP:
-			C.artecraft_show_window()
+			notifyTrayOpen()
 		case C.WM_RBUTTONUP:
 			labels := trayLabels()
 			C.artecraft_menu(hwnd, winWide(labels.open), winWide(labels.hide), winWide(labels.quit))
@@ -162,7 +180,7 @@ func artecraftTrayProc(hwnd C.HWND, msg C.UINT, wparam C.WPARAM, lparam C.LPARAM
 	case C.WM_COMMAND:
 		switch uint32(wparam) & 0xFFFF {
 		case C.ARTECRAFT_ID_OPEN:
-			C.artecraft_show_window()
+			notifyTrayOpen()
 		case C.ARTECRAFT_ID_HIDE:
 			C.artecraft_hide_window()
 		case C.ARTECRAFT_ID_QUIT:
@@ -178,7 +196,21 @@ func artecraftTrayProc(hwnd C.HWND, msg C.UINT, wparam C.WPARAM, lparam C.LPARAM
 		C.artecraft_post_quit(hwnd)
 		return 0
 	}
-	return C.artecraft_call_prev(hwnd, msg, wparam, lparam)
+	// Окно-приёмник трея не имеет «прежнего» обработчика: раньше здесь
+	// вызывался CallWindowProc окна WebView2 с чужим HWND — из-за этого
+	// сообщения уходили не туда и окно могло зависнуть.
+	if uint32(msg) == uint32(C.artecraft_taskbar_created()) && msg != 0 {
+		// Explorer перезапустился — иконку надо добавить заново.
+		trayMu.Lock()
+		h := trayHWND
+		trayMu.Unlock()
+		if h != nil {
+			C.artecraft_tray_add(h, winWide(trayLabels().tip))
+			logLine("tray icon re-added after Explorer restart")
+		}
+		return 0
+	}
+	return C.artecraft_default_proc(hwnd, msg, wparam, lparam)
 }
 
 //export artecraftSubclassProc

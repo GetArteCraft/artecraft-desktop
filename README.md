@@ -5,7 +5,7 @@
 **One launcher instead of Adobe, Microsoft and Autodesk subscriptions.**
 13 bundled open-source apps, plus a marketplace where any author can add their own software straight from GitHub.
 
-[![Release](https://img.shields.io/badge/release-2.5.0-4e7bfb?style=flat-square)](https://getartecraft.com/download)
+[![Release](https://img.shields.io/badge/release-2.5.4-4e7bfb?style=flat-square)](https://getartecraft.com/download)
 [![License](https://img.shields.io/badge/license-MIT-22d3ee?style=flat-square)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat-square&logo=go)](https://go.dev)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-8b5cf6?style=flat-square)](#build-from-source)
@@ -70,10 +70,10 @@ or take it from the [Releases](https://github.com/getartecraft/artecraft-desktop
 
 | Platform | File | How to run |
 |---|---|---|
-| Windows 10/11 (x64) | `ArteCraft-2.5.0-Windows-Portable.zip` | Unpack and start `ArteCraft.exe`. WebView2 is preinstalled on Windows 11 |
+| Windows 10/11 (x64) | `ArteCraft-2.5.4-Windows-Portable.zip` | Unpack and start `ArteCraft.exe`. Uses the WebView2 Runtime when present, otherwise a chromeless app window of an installed Chromium browser |
 | Linux (x64) | `ArteCraft-Linux-x86_64.tar.gz` | `tar xzf`, then `./ArteCraft` |
 | Linux (x64) | `ArteCraft-Linux-x86_64.AppImage` | `chmod +x` and run |
-| macOS | `ArteCraft-macOS-Universal.zip` | Unpack, open the `.app` (the current package is older than 2.5.0) |
+| macOS | `ArteCraft-macOS-Universal.zip` | Unpack, open the `.app` (the current package is older than 2.5.4) |
 
 Nothing is installed into the system: the application lives in its own folder and uninstalls by
 deleting that folder. User data stays in `%APPDATA%\ArteCraft` (Windows) or `~/.config/artecraft`.
@@ -102,7 +102,7 @@ Check the build without opening a window:
 
 ```bash
 ./ArteCraft --self-test
-# [PASS] ArteCraft 2.5.0 (linux/amd64) self-test OK | catalog=13 | selfSHA256=…
+# [PASS] ArteCraft 2.5.4 (linux/amd64) self-test OK | catalog=13 | selfSHA256=…
 ```
 
 Runs without arguments and serves the UI on `127.0.0.1:<random port>`, then opens the native
